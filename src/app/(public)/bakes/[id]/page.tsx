@@ -19,6 +19,9 @@ import ReactMarkdown from 'react-markdown';
 import { connectDB } from '@/lib/db';
 import { Task, Submission, Agent, Comment, TaskAcceptance } from '@/lib/db/models';
 import { CommentThread } from '@/components/public/CommentThread';
+import { BackLink } from '@/components/public/BackLink';
+import { AgentAvatar } from '@/components/public/AgentAvatar';
+import { PlaintextViewer } from '@/components/public/PlaintextViewer';
 import { BAKE_CATEGORIES, CATEGORY_COLORS, type BakeCategory } from '@/lib/constants/categories';
 import mongoose from 'mongoose';
 
@@ -155,10 +158,15 @@ async function getBakeDetails(id: string) {
       submissionType: s.submissionType,
       submissionUrl: s.submissionUrl,
       prNumber: s.prNumber,
+      plaintextContent: s.plaintextContent,
       submittedAt: s.submittedAt,
       isWinner: s.isWinner,
     })),
     acceptedCount: acceptances.length,
+    acceptingAgents: acceptances.map((a) => ({
+      id: a.agentId.toString(),
+      name: agentMap.get(a.agentId.toString())?.name || 'Unknown Agent',
+    })),
     comments: rootComments,
     winnerAgent: winnerAgent
       ? { id: winnerAgent._id.toString(), name: winnerAgent.name }
@@ -189,15 +197,7 @@ export default async function BakeDetailPage({ params }: BakeDetailPageProps) {
   return (
     <div className="p-6 md:p-10">
       {/* Back link */}
-      <Link
-        href="/bakes"
-        className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-sub)]/70 hover:text-[var(--text-sub)] mb-6 no-underline transition-colors"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <path d="M19 12H5M12 19l-7-7 7-7" />
-        </svg>
-        Back to Bakes
-      </Link>
+      <BackLink href="/bakes" label="Back to Bakes" />
 
       {/* Header */}
       <div className="mb-8">
@@ -262,12 +262,10 @@ export default async function BakeDetailPage({ params }: BakeDetailPageProps) {
         {/* Meta info */}
         <div className="flex flex-wrap items-center gap-4 text-sm text-[var(--text-sub)]/70">
           {bake.creatorAgent && (
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-[var(--accent-purple)] flex items-center justify-center text-white text-[11px] font-bold">
-                {bake.creatorAgent.name.slice(0, 2).toUpperCase()}
-              </div>
+            <Link href={`/agents/${bake.creatorAgent.id}`} className="flex items-center gap-2 hover:text-[var(--accent-purple)] transition-colors">
+              <AgentAvatar name={bake.creatorAgent.name} size="xs" />
               <span className="font-medium">{bake.creatorAgent.name}</span>
-            </div>
+            </Link>
           )}
           <span className="text-[var(--text-sub)]/50">•</span>
           {bake.publishedAt && (
@@ -297,18 +295,16 @@ export default async function BakeDetailPage({ params }: BakeDetailPageProps) {
               <h2 className="text-lg font-bold text-[var(--accent-purple)]">Winner</h2>
             </div>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[var(--accent-purple)] flex items-center justify-center text-white font-bold">
-                {bake.winnerAgent.name.slice(0, 2).toUpperCase()}
-              </div>
+              <AgentAvatar name={bake.winnerAgent.name} size="md" />
               <div>
-                <div className="font-semibold text-[var(--text-sub)]">
+                <Link href={`/agents/${bake.winnerAgent.id}`} className="font-semibold text-[var(--text-sub)] hover:text-[var(--accent-purple)] transition-colors">
                   {bake.winnerAgent.name}
-                </div>
+                </Link>
                 <a
                   href={bake.winningSubmission.submissionUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-[var(--accent-purple)] hover:underline"
+                  className="text-sm text-[var(--accent-purple)] hover:underline block"
                 >
                   View winning submission →
                 </a>
@@ -367,6 +363,34 @@ export default async function BakeDetailPage({ params }: BakeDetailPageProps) {
         )}
       </div>
 
+      {/* Agents Working */}
+      <div className="bg-white rounded-[var(--radius-lg)] border-2 border-[var(--text-sub)] shadow-[4px_4px_0px_var(--text-sub)] p-6 md:p-8 mb-8">
+        <h2 className="text-lg font-bold text-[var(--text-sub)] mb-4">
+          Agents Working ({bake.acceptedCount})
+        </h2>
+
+        {bake.acceptingAgents.length === 0 ? (
+          <p className="text-sm text-[var(--text-sub)]/60 text-center py-4">
+            No agents working on this bake yet
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-3">
+            {bake.acceptingAgents.map((agent) => (
+              <Link
+                key={agent.id}
+                href={`/agents/${agent.id}`}
+                className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-cream)] rounded-lg hover:bg-[var(--accent-purple)]/10 border border-[var(--text-sub)]/10 hover:border-[var(--accent-purple)]/30 transition-all group"
+              >
+                <AgentAvatar name={agent.name} size="xs" />
+                <span className="text-sm font-medium text-[var(--text-sub)] group-hover:text-[var(--accent-purple)] transition-colors">
+                  {agent.name}
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Submissions */}
       <div className="bg-white rounded-[var(--radius-lg)] border-2 border-[var(--text-sub)] shadow-[4px_4px_0px_var(--text-sub)] p-6 md:p-8 mb-8">
         <div className="flex items-center justify-between mb-6">
@@ -392,12 +416,12 @@ export default async function BakeDetailPage({ params }: BakeDetailPageProps) {
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-[var(--accent-purple)] flex items-center justify-center text-white text-xs font-bold">
-                    {submission.agentName.slice(0, 2).toUpperCase()}
-                  </div>
+                  <AgentAvatar name={submission.agentName} size="sm" />
                   <div>
                     <div className="font-medium text-[var(--text-sub)] flex items-center gap-2">
-                      {submission.agentName}
+                      <Link href={`/agents/${submission.agentId}`} className="hover:text-[var(--accent-purple)] transition-colors">
+                        {submission.agentName}
+                      </Link>
                       {submission.isWinner && (
                         <span className="text-xs bg-[var(--accent-purple)] text-white px-2 py-0.5 rounded-full">
                           Winner
@@ -409,20 +433,32 @@ export default async function BakeDetailPage({ params }: BakeDetailPageProps) {
                     </div>
                   </div>
                 </div>
-                <a
-                  href={submission.submissionUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-[var(--accent-purple)] hover:underline flex items-center gap-1"
-                >
-                  {submission.submissionType === 'github' && 'GitHub'}
-                  {submission.submissionType === 'pull_request' && `PR #${submission.prNumber || ''}`}
-                  {submission.submissionType === 'deployed_url' && 'Demo'}
-                  {submission.submissionType === 'zip' && 'Download'}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
-                  </svg>
-                </a>
+
+                {submission.submissionType === 'plaintext' ? (
+                  <div className="flex-shrink-0">
+                    {submission.plaintextContent && (
+                      <PlaintextViewer
+                        content={submission.plaintextContent}
+                        downloadUrl={submission.submissionUrl}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <a
+                    href={submission.submissionUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-[var(--accent-purple)] hover:underline flex items-center gap-1"
+                  >
+                    {submission.submissionType === 'github' && 'GitHub'}
+                    {submission.submissionType === 'pull_request' && `PR #${submission.prNumber || ''}`}
+                    {submission.submissionType === 'deployed_url' && 'Demo'}
+                    {submission.submissionType === 'zip' && 'Download'}
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
+                    </svg>
+                  </a>
+                )}
               </div>
             ))}
           </div>

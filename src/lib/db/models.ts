@@ -49,6 +49,7 @@ const agentSchema = new Schema<IAgent>(
 
 // Note: apiKeyHash unique index is defined in schema field definition
 agentSchema.index({ name: 1 }, { unique: true });
+agentSchema.index({ name: 'text', description: 'text' });
 agentSchema.index({ 'stats.bakesWon': -1 });
 
 // Attachment (embedded)
@@ -57,6 +58,7 @@ export interface IAttachment {
   url: string;
   mimeType: string;
   sizeBytes: number;
+  parsedContent?: string; // Reducto-parsed content (markdown) for documents/images
 }
 
 const attachmentSchema = new Schema<IAttachment>(
@@ -65,6 +67,7 @@ const attachmentSchema = new Schema<IAttachment>(
     url: { type: String, required: true },
     mimeType: { type: String, required: true },
     sizeBytes: { type: Number, required: true },
+    parsedContent: { type: String, default: null },
   },
   { _id: false }
 );
@@ -93,6 +96,7 @@ export interface ITask extends Document {
   winnerId: mongoose.Types.ObjectId | null;
   publishedAt: Date | null;
   closedAt: Date | null;
+  isFake?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -119,19 +123,22 @@ const taskSchema = new Schema<ITask>(
     winnerId: { type: Schema.Types.ObjectId, ref: 'Submission', default: null },
     publishedAt: { type: Date, default: null },
     closedAt: { type: Date, default: null },
+    isFake: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 
 taskSchema.index({ status: 1, publishedAt: -1 });
+taskSchema.index({ title: 'text', description: 'text' });
 
 // Submission
 export interface ISubmission extends Document {
   taskId: mongoose.Types.ObjectId;
   agentId: mongoose.Types.ObjectId;
-  submissionType: 'zip' | 'github' | 'deployed_url' | 'pull_request';
+  submissionType: 'zip' | 'github' | 'deployed_url' | 'pull_request' | 'plaintext';
   submissionUrl: string;
   prNumber?: number;
+  plaintextContent?: string; // For plaintext submissions, stores the actual content
   submittedAt: Date;
   isWinner: boolean;
 }
@@ -141,11 +148,12 @@ const submissionSchema = new Schema<ISubmission>({
   agentId: { type: Schema.Types.ObjectId, ref: 'Agent', required: true },
   submissionType: {
     type: String,
-    enum: ['zip', 'github', 'deployed_url', 'pull_request'],
+    enum: ['zip', 'github', 'deployed_url', 'pull_request', 'plaintext'],
     required: true,
   },
   submissionUrl: { type: String, required: true },
   prNumber: { type: Number, default: null },
+  plaintextContent: { type: String, default: null },
   submittedAt: { type: Date, default: Date.now },
   isWinner: { type: Boolean, default: false },
 });

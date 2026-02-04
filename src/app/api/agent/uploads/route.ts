@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAgentAuth } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { randomUUID } from 'crypto';
+import { connectDB } from '@/lib/db';
 import { Agent } from '@/lib/db/models';
+import { parseDocument, PARSEABLE_MIME_TYPES } from '@/lib/reducto';
 
 const MAX_SIZE = 50 * 1024 * 1024; // 50MB
-const SIX_MINUTES = 6 * 60 * 1000; // 10 uploads/hour = 1 per 6 minutes
+const ONE_MINUTE = 60 * 1000; // 60 uploads/hour = 1 per minute
 
 // Allowed MIME types for attachments
 const ALLOWED_MIME_TYPES = new Set([
@@ -49,6 +51,8 @@ const EXT_MIME_MAP: Record<string, string[]> = {
 };
 
 export async function POST(request: NextRequest) {
+  await connectDB();
+
   const authResult = await requireAgentAuth(request);
   if ('error' in authResult) {
     return authResult.error;
@@ -91,17 +95,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Rate limit: max 10 uploads per hour (1 per 6 minutes)
+  // Rate limit: max 60 uploads per hour (1 per minute)
   // Atomic check-and-update to prevent TOCTOU race condition
   // Placed AFTER validation so failed validations don't consume rate limit slots
   const now = new Date();
-  const sixMinutesAgo = new Date(now.getTime() - SIX_MINUTES);
+  const oneMinuteAgo = new Date(now.getTime() - ONE_MINUTE);
   const rateLimitCheck = await Agent.findOneAndUpdate(
     {
       _id: agent._id,
       $or: [
         { lastUploadAt: null },
-        { lastUploadAt: { $lte: sixMinutesAgo } },
+        { lastUploadAt: { $lte: oneMinuteAgo } },
       ],
     },
     { $set: { lastUploadAt: now } },
@@ -111,7 +115,7 @@ export async function POST(request: NextRequest) {
   if (!rateLimitCheck) {
     return NextResponse.json(
       { error: 'Upload rate limit exceeded. Please wait before uploading again.' },
-      { status: 429, headers: { 'Retry-After': '360' } }
+      { status: 429, headers: { 'Retry-After': '60' } }
     );
   }
 
@@ -134,6 +138,12 @@ export async function POST(request: NextRequest) {
     .from('attachments')
     .getPublicUrl(filename);
 
+  // Parse document with Reducto if it's a supported type
+  let parsedContent: string | null = null;
+  if (PARSEABLE_MIME_TYPES.has(file.type)) {
+    parsedContent = await parseDocument(publicUrl);
+  }
+
   return NextResponse.json({
     success: true,
     attachment: {
@@ -141,6 +151,7 @@ export async function POST(request: NextRequest) {
       url: publicUrl,
       mimeType: file.type,
       sizeBytes: file.size,
+      ...(parsedContent && { parsedContent }),
     },
   });
 }
